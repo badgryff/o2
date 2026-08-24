@@ -2,7 +2,6 @@ const cfg = window.O2_CONFIG || {};
 const configured = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY);
 const TOKEN_KEY = 'o2_session_token';
 const USER_KEY = 'o2_session_user';
-const GROUP_KEY = 'o2_active_group_id';
 const GROUP_KEY = 'o2_active_group';
 const EVIDENCE_BUCKET = 'o2-evidence';
 const MAX_FILES = 8;
