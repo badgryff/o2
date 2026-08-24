@@ -1,18 +1,30 @@
-# O2 Practice Journal — Vercel static version
+# O2 Practice Journal — username/password build
 
-This folder is the deployable website. It does not need npm, Next.js or a build command.
+This is a static Vercel-ready build. Members see only a **username + password** login. No real email address is required.
 
-## 1. Preview immediately
+## Important: disable Supabase email confirmation
 
-Open `index.html` in a browser. With no Supabase values it runs in demo mode so you can inspect the design and interactions.
+Supabase Password Auth internally expects an email-shaped identifier, so this app maps a username such as `jeremy` to a private synthetic identifier such as `jeremy@o2practice.local`. Members never see or use that synthetic value.
 
-## 2. Turn on real shared accounts/data
+In Supabase go to **Authentication → Providers → Email** and turn **Confirm email** OFF. Otherwise Supabase will try to confirm an address that does not exist.
 
-Create a free Supabase project, then open its **SQL Editor** and run:
+## If you already ran the older schema
+
+Run **only** this file in Supabase SQL Editor:
+
+`supabase/username-migration.sql`
+
+It adds username support and the safe invite-code join function without deleting your existing data.
+
+## If this is a brand-new Supabase project
+
+Run:
 
 `supabase/schema.sql`
 
-Next open **Project Settings → API** in Supabase. Copy your Project URL and anon/public key into `config.js`:
+## Configure Supabase
+
+Keep your existing `config.js` values. If needed:
 
 ```js
 window.O2_CONFIG = {
@@ -21,18 +33,14 @@ window.O2_CONFIG = {
 };
 ```
 
-The anon key is designed to be used in browser apps. Row Level Security is enabled by the supplied schema.
+Use only the public/anon/publishable key in the browser, never a service-role/secret key.
 
-For easiest testing, in Supabase Authentication settings you may temporarily disable email confirmation. Otherwise new users need to confirm their email before signing in.
+## Update GitHub / Vercel
 
-## 3. Deploy on Vercel
+Upload the replacement files to the same GitHub repository and choose **Replace** when GitHub reports files with the same names. Vercel will redeploy automatically after the commit.
 
-Put the contents of this folder in a GitHub repository, import it into Vercel, and deploy it as a static project. No build command is required.
+### Login flow
 
-Alternatively, in Vercel you can upload/import the folder through a repository. The root contains `index.html`, so it will be served directly.
+New member: Display name + Username + Password. Existing member: Username + Password.
 
-## Features in this build
-
-The app has real email/password accounts, group creation, invite-code joining, shared practice entries, multi-select colour flairs, practice duration, session notes, improvements, challenges, homework with due dates, per-member homework completion, reactions, comments, personal journal history, practice statistics, streaks, member lists and admin/member roles in the database.
-
-The interface uses a sharp O2 blue (#0057FF), white and near-black, with the supplied O2 Studios logo extracted into a transparent asset.
+Usernames are lower-case internally and may contain 3–24 letters, numbers, dots, underscores or hyphens.

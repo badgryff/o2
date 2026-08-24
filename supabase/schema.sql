@@ -3,6 +3,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null default 'Member',
+  username text,
   avatar_url text,
   created_at timestamptz not null default now()
 );
@@ -70,11 +71,36 @@ create table if not exists public.reactions (
 
 create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles(id,display_name)
-  values(new.id, coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email,'@',1)));
+  insert into public.profiles(id,display_name,username)
+  values(new.id, coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email,'@',1)), nullif(lower(new.raw_user_meta_data->>'username'), ''));
   return new;
 end;
 $$;
+
+
+create unique index if not exists profiles_username_unique
+  on public.profiles (lower(username))
+  where username is not null;
+
+create or replace function public.join_group_by_code(p_invite_code text)
+returns table(group_id uuid, group_name text, role text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  g public.groups%rowtype;
+begin
+  select * into g from public.groups where upper(invite_code) = upper(trim(p_invite_code));
+  if g.id is null then raise exception 'Invalid invite code'; end if;
+  insert into public.group_members(group_id,user_id,role)
+  values(g.id,auth.uid(),'member')
+  on conflict (group_id,user_id) do nothing;
+  return query select g.id,g.name,'member'::text;
+end;
+$$;
+
+grant execute on function public.join_group_by_code(text) to authenticated;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
