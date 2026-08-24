@@ -1,46 +1,23 @@
-# O2 Practice Journal — username/password build
+# O2 Practice Journal — Static Username Auth
 
-This is a static Vercel-ready build. Members see only a **username + password** login. No real email address is required.
+This build does **not** use Supabase Email Auth, Vercel Functions, service-role keys, JWT secrets, or Vercel environment variables.
 
-## Important: disable Supabase email confirmation
+## Setup
 
-Supabase Password Auth internally expects an email-shaped identifier, so this app maps a username such as `jeremy` to a private synthetic identifier such as `jeremy@o2practice.local`. Members never see or use that synthetic value.
+1. In Supabase, open **SQL Editor**.
+2. Run `supabase/static-auth-migration.sql` once.
+3. Open `config.js` and set only:
+   - `SUPABASE_URL` — your Project URL.
+   - `SUPABASE_ANON_KEY` — your public anon/publishable key.
+4. Upload the project files to GitHub. Keep `index.html` at repository root.
+5. Vercel will redeploy automatically if the repo is already connected.
 
-In Supabase go to **Authentication → Providers → Email** and turn **Confirm email** OFF. Otherwise Supabase will try to confirm an address that does not exist.
+## Authentication model
 
-## If you already ran the older schema
+Users see only Display name, Username and Password. Passwords are hashed with PostgreSQL `pgcrypto`/bcrypt. Login returns a random 30-day opaque session token. Only a SHA-256 hash of that token is stored in the database. Browser roles cannot directly read the O2 tables; all operations go through `SECURITY DEFINER` RPC functions which validate the session token.
 
-Run **only** this file in Supabase SQL Editor:
+Your `SUPABASE_ANON_KEY` is intentionally public and may be committed to frontend code. Never add a service-role key to this project.
 
-`supabase/username-migration.sql`
+## Important
 
-It adds username support and the safe invite-code join function without deleting your existing data.
-
-## If this is a brand-new Supabase project
-
-Run:
-
-`supabase/schema.sql`
-
-## Configure Supabase
-
-Keep your existing `config.js` values. If needed:
-
-```js
-window.O2_CONFIG = {
-  SUPABASE_URL: "https://YOUR_PROJECT.supabase.co",
-  SUPABASE_ANON_KEY: "YOUR_PUBLIC_ANON_KEY"
-};
-```
-
-Use only the public/anon/publishable key in the browser, never a service-role/secret key.
-
-## Update GitHub / Vercel
-
-Upload the replacement files to the same GitHub repository and choose **Replace** when GitHub reports files with the same names. Vercel will redeploy automatically after the commit.
-
-### Login flow
-
-New member: Display name + Username + Password. Existing member: Username + Password.
-
-Usernames are lower-case internally and may contain 3–24 letters, numbers, dots, underscores or hyphens.
+This migration creates new tables prefixed with `o2_` and does not depend on the older email-auth tables. Existing old test users/data are not automatically migrated.
