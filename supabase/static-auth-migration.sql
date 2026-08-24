@@ -1,5 +1,12 @@
--- O2 Practice Journal: true username/password auth without Supabase Auth or Vercel secrets.
--- Run this once in Supabase SQL Editor.
+-- O2 Practice Journal — Static Username Auth Migration v3
+-- Corrected for Supabase projects where pgcrypto is installed in the `extensions` schema.
+-- Safe to rerun after earlier partial attempts.
+-- Expected pgcrypto signatures:
+--   extensions.crypt(text,text)
+--   extensions.gen_salt(text,integer)
+--   extensions.digest(text,text)
+--   extensions.gen_random_bytes(integer)
+
 create extension if not exists pgcrypto;
 
 create table if not exists public.o2_users (
@@ -22,7 +29,7 @@ create table if not exists public.o2_sessions (
 create table if not exists public.o2_groups (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  invite_code text not null unique default upper(substr(encode(gen_random_bytes(8),'hex'),1,6)),
+  invite_code text not null unique default upper(substr(encode(extensions.gen_random_bytes(8),'hex'),1,6)),
   created_by uuid not null references public.o2_users(id) on delete cascade,
   created_at timestamptz not null default now()
 );
@@ -86,14 +93,14 @@ revoke all on public.o2_users, public.o2_sessions, public.o2_groups, public.o2_g
   public.o2_comments, public.o2_reactions from anon, authenticated;
 
 create or replace function public.o2_user_from_token(p_token text)
-returns uuid language sql security definer stable set search_path=public as $$
+returns uuid language sql security definer stable set search_path=public,extensions,pg_catalog as $$
   select s.user_id from public.o2_sessions s
-  where s.token_hash=encode(digest(coalesce(p_token,''),'sha256'),'hex') and s.expires_at>now()
+  where s.token_hash=encode(extensions.digest(coalesce(p_token,'')::text,'sha256'::text),'hex') and s.expires_at>now()
   order by s.created_at desc limit 1;
 $$;
 
 create or replace function public.o2_register(p_username text,p_password text,p_display_name text)
-returns jsonb language plpgsql security definer set search_path=public as $$
+returns jsonb language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare u public.o2_users; raw_token text;
 begin
   p_username:=lower(trim(p_username)); p_display_name:=trim(p_display_name);
@@ -104,30 +111,30 @@ begin
   if length(p_display_name)>50 then raise exception 'Display name is too long.'; end if;
   if exists(select 1 from public.o2_users where lower(username)=p_username) then raise exception 'That username is already taken.'; end if;
   insert into public.o2_users(username,display_name,password_hash)
-  values(p_username,p_display_name,crypt(p_password,gen_salt('bf',10))) returning * into u;
-  raw_token:=encode(gen_random_bytes(32),'hex');
-  insert into public.o2_sessions(user_id,token_hash,expires_at) values(u.id,encode(digest(raw_token,'sha256'),'hex'),now()+interval '30 days');
+  values(p_username,p_display_name,extensions.crypt(p_password::text, extensions.gen_salt('bf'::text,10::integer)::text)) returning * into u;
+  raw_token:=encode(extensions.gen_random_bytes(32),'hex');
+  insert into public.o2_sessions(user_id,token_hash,expires_at) values(u.id,encode(extensions.digest(raw_token::text,'sha256'::text),'hex'),now()+interval '30 days');
   return jsonb_build_object('token',raw_token,'user',jsonb_build_object('id',u.id,'username',u.username,'display_name',u.display_name));
 end;$$;
 
 create or replace function public.o2_login(p_username text,p_password text)
-returns jsonb language plpgsql security definer set search_path=public as $$
+returns jsonb language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare u public.o2_users; raw_token text;
 begin
   select * into u from public.o2_users where lower(username)=lower(trim(p_username));
-  if u.id is null or u.password_hash <> crypt(p_password,u.password_hash) then raise exception 'Incorrect username or password.'; end if;
+  if u.id is null or u.password_hash <> extensions.crypt(p_password::text,u.password_hash::text) then raise exception 'Incorrect username or password.'; end if;
   delete from public.o2_sessions where expires_at<=now();
-  raw_token:=encode(gen_random_bytes(32),'hex');
-  insert into public.o2_sessions(user_id,token_hash,expires_at) values(u.id,encode(digest(raw_token,'sha256'),'hex'),now()+interval '30 days');
+  raw_token:=encode(extensions.gen_random_bytes(32),'hex');
+  insert into public.o2_sessions(user_id,token_hash,expires_at) values(u.id,encode(extensions.digest(raw_token::text,'sha256'::text),'hex'),now()+interval '30 days');
   return jsonb_build_object('token',raw_token,'user',jsonb_build_object('id',u.id,'username',u.username,'display_name',u.display_name));
 end;$$;
 
 create or replace function public.o2_logout(p_token text)
-returns boolean language plpgsql security definer set search_path=public as $$
-begin delete from public.o2_sessions where token_hash=encode(digest(coalesce(p_token,''),'sha256'),'hex'); return true; end;$$;
+returns boolean language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
+begin delete from public.o2_sessions where token_hash=encode(extensions.digest(coalesce(p_token,'')::text,'sha256'::text),'hex'); return true; end;$$;
 
 create or replace function public.o2_create_group(p_token text,p_name text)
-returns jsonb language plpgsql security definer set search_path=public as $$
+returns jsonb language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare uid uuid; g public.o2_groups;
 begin
  uid:=public.o2_user_from_token(p_token); if uid is null then raise exception 'Session expired. Sign in again.'; end if;
@@ -138,7 +145,7 @@ begin
 end;$$;
 
 create or replace function public.o2_join_group(p_token text,p_invite_code text)
-returns jsonb language plpgsql security definer set search_path=public as $$
+returns jsonb language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare uid uuid; g public.o2_groups; r text;
 begin
  uid:=public.o2_user_from_token(p_token); if uid is null then raise exception 'Session expired. Sign in again.'; end if;
@@ -150,7 +157,7 @@ begin
 end;$$;
 
 create or replace function public.o2_dashboard(p_token text)
-returns jsonb language plpgsql security definer set search_path=public as $$
+returns jsonb language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare uid uuid; u public.o2_users; g public.o2_groups; member_role text; result jsonb;
 begin
  uid:=public.o2_user_from_token(p_token); if uid is null then return jsonb_build_object('authenticated',false); end if;
@@ -181,7 +188,7 @@ begin
 end;$$;
 
 create or replace function public.o2_add_entry(p_token text,p_duration integer,p_description text,p_improvements text,p_challenges text,p_categories text[],p_homework_completed boolean)
-returns uuid language plpgsql security definer set search_path=public as $$
+returns uuid language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare uid uuid; gid uuid; eid uuid;
 begin
  uid:=public.o2_user_from_token(p_token); if uid is null then raise exception 'Session expired. Sign in again.'; end if;
@@ -193,7 +200,7 @@ begin
 end;$$;
 
 create or replace function public.o2_add_homework(p_token text,p_title text,p_due_date date)
-returns uuid language plpgsql security definer set search_path=public as $$
+returns uuid language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare uid uuid; gid uuid; hid uuid;
 begin
  uid:=public.o2_user_from_token(p_token); if uid is null then raise exception 'Session expired. Sign in again.'; end if;
@@ -203,7 +210,7 @@ begin
 end;$$;
 
 create or replace function public.o2_set_homework(p_token text,p_homework_id uuid,p_completed boolean)
-returns boolean language plpgsql security definer set search_path=public as $$
+returns boolean language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare uid uuid; gid uuid;
 begin
  uid:=public.o2_user_from_token(p_token); if uid is null then raise exception 'Session expired. Sign in again.'; end if;
@@ -214,7 +221,7 @@ begin
 end;$$;
 
 create or replace function public.o2_toggle_reaction(p_token text,p_entry_id uuid,p_emoji text default '🔥')
-returns boolean language plpgsql security definer set search_path=public as $$
+returns boolean language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare uid uuid; exists_row boolean;
 begin
  uid:=public.o2_user_from_token(p_token); if uid is null then raise exception 'Session expired. Sign in again.'; end if;
@@ -225,7 +232,7 @@ begin
 end;$$;
 
 create or replace function public.o2_add_comment(p_token text,p_entry_id uuid,p_body text)
-returns uuid language plpgsql security definer set search_path=public as $$
+returns uuid language plpgsql security definer set search_path=public,extensions,pg_catalog as $$
 declare uid uuid; cid uuid;
 begin
  uid:=public.o2_user_from_token(p_token); if uid is null then raise exception 'Session expired. Sign in again.'; end if;
