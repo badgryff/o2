@@ -19,3 +19,27 @@
 .social{display:flex;gap:8px}.social .socialAction{border:1px solid #293344;background:#111721;color:#dce4f1;border-radius:999px;padding:7px 11px;display:flex;align-items:center;gap:6px;cursor:pointer;transition:.15s ease}.social .socialAction:hover{border-color:#356dcc;background:#13213a;transform:translateY(-1px)}.socialAction span{font-size:16px}.socialAction b{font-size:12px;color:#fff}.socialAction em{font-style:normal;font-size:10px;color:#8e9aab}.socialAction.react:hover span{filter:saturate(1.25)}
 .durationValue{display:inline-flex!important;margin-left:7px;color:#75a2ff!important;font-weight:800!important;font-size:12px!important}.durationSliderRow{display:grid;grid-template-columns:28px 1fr 24px;gap:10px;align-items:center;margin-top:4px}.durationSliderRow>span{font-size:10px;color:#68758b;text-align:center}.durationSliderRow input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--blue);width:100%;cursor:pointer}
 @media(max-width:700px){.membersHeader{align-items:flex-start;flex-direction:column}.memberHeaderActions{width:100%}.memberHeaderActions>*{flex:1}.socialAction em{display:none}.groupSwitchWrap{display:none}}
+
+/* V7 — roles, notifications, emoji navigation */
+.nav{position:relative}
+.nav .navEmoji{font-size:19px!important;width:28px;text-align:center;filter:none}
+.navBadge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ff3d5f;color:#fff;font-size:10px;display:grid;place-items:center}
+.adminCrown{font-size:.9em;filter:saturate(1.25);vertical-align:1px;margin-left:3px}
+.teacherBadge{font-size:.82em;vertical-align:1px;margin-left:3px}
+.roleText{text-transform:capitalize}
+.memberCard h3{display:flex;justify-content:center;align-items:center;gap:3px}
+.memberActions{gap:8px}
+.memberManage{background:#111a29!important;border:1px solid #284168!important;color:#8eb6ff!important}
+.adminActionStack{display:grid;gap:9px;margin-top:20px}
+.adminActionStack button{width:100%;min-height:46px;border-radius:11px;border:1px solid #2a3444;background:#111722;color:#fff;font-weight:750;cursor:pointer}
+.adminActionStack .roleSet:hover,.adminActionStack .roleSet.active{border-color:#1665ff;background:#102450}
+.dangerButton{border-color:#5a2630!important;background:#261016!important;color:#ff8898!important}
+.dangerButton:hover{background:#39151e!important}
+.notificationList{display:grid;gap:9px}
+.notificationItem{display:grid;grid-template-columns:42px 1fr 10px;align-items:center;gap:12px;padding:14px 16px;border:1px solid #202a38;border-radius:13px;background:#0d1219}
+.notificationItem.unread{border-color:#28589d;background:#0e1930}
+.notificationIcon{font-size:21px;width:42px;height:42px;border-radius:12px;background:#151d29;display:grid;place-items:center}
+.notificationItem p{margin:0 0 5px;color:#dce4ef;font-size:13px}
+.notificationItem small{color:#748198;font-size:10px}
+.notificationItem i{width:8px;height:8px;border-radius:50%;background:#1665ff}
+@media(max-width:700px){.nav .navEmoji{font-size:18px!important}.navBadge{position:absolute;right:8px}}
