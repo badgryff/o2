@@ -13,7 +13,27 @@ const $$ = (s, p = document) => [...p.querySelectorAll(s)];
 const CATS = {
   choreography: ['Choreo Memorisation', 'c1'], cleaning: ['Details / Cleaning', 'c2'], dynamics: ['Dynamics', 'c3'],
   isolations: ['Isolations', 'c4'], expressions: ['Facial Expressions', 'c5'], stamina: ['Stamina', 'c6'],
-  foundation: ['Foundation', 'c7'], formation: ['Formation Revision', 'c8']
+  foundation: ['Foundation', 'c7'], formation: ['Formation Revision', 'c8'], extensions: ['Extensions', 'c9'],
+  stability: ['Stability', 'c10']
+};
+const NAME_COLORS = {
+  default:'#ffffff', o2blue:'#4d88ff', sky:'#73c7ff', cyan:'#4fe4ef', mint:'#6be0b3',
+  lime:'#b8e85c', gold:'#ffd166', orange:'#ff9d5c', pink:'#ff7db7', lavender:'#b99cff', red:'#ff6b75'
+};
+const NAME_COLOR_LABELS = {default:'Default',o2blue:'O2 Blue',sky:'Sky',cyan:'Cyan',mint:'Mint',lime:'Lime',gold:'Gold',orange:'Orange',pink:'Pink',lavender:'Lavender',red:'Red'};
+const NAME_FONTS = {
+  default:'inherit', serif:'Georgia, Times New Roman, serif', mono:'ui-monospace, SFMono-Regular, Menlo, monospace',
+  rounded:'Arial Rounded MT Bold, Avenir Next, Arial, sans-serif', condensed:'Arial Narrow, Helvetica Neue, sans-serif',
+  elegant:'Didot, Bodoni 72, Georgia, serif'
+};
+const NAME_FONT_LABELS = {default:'Default',serif:'Classic Serif',mono:'Studio Mono',rounded:'Bubble Rounded',condensed:'Stage Condensed',elegant:'Editorial'};
+const THEME_LABELS = {
+  default:'Default', trainee_grid:'Trainee Grid', blue_pulse:'Blue Pulse', neon_stage:'Neon Stage',
+  midnight_chrome:'Midnight Chrome', aurora:'Aurora', prism:'Prism', redline:'Redline', superstar_gold:'Superstar Gold'
+};
+const MEDAL_TIER_ICONS = {
+  weekly:'🏆', passionate:'💙', avid:'⚡', zealous:'🔥', fanatical:'💥', infatuated:'💎', maniacal:'🌀',
+  novice:'🎓', devoted:'💎', ace:'⭐', debut:'🎤', superstar:'🌟'
 };
 let state = { user: null, group: null, groups: [], role: 'member', entries: [], homework: [], members: [], notifications: [], tab: 'feed', profileUserId: null };
 const demoEntries = [{
@@ -34,14 +54,16 @@ async function refresh(groupId = localStorage.getItem(GROUP_KEY) || null) {
   if (!configured) { state.entries = demoEntries; state.homework = demoHW; state.members = []; state.groups = []; render(); return; }
   if (!getToken()) { state.user = null; state.group = null; state.groups = []; state.entries = []; state.homework = []; state.members = []; render(); return; }
   try {
-    const d = await rpc('o2_dashboard_v7', { p_token: getToken(), p_group_id: groupId || null });
+    const d = await rpc('o2_dashboard_v8', { p_token: getToken(), p_group_id: groupId || null });
     if (!d?.authenticated) { clearSession(); render(); return; }
     state.user = d.user; localStorage.setItem(USER_KEY, JSON.stringify(d.user));
     state.groups = d.groups || [];
     state.group = d.group; state.role = d.group?.role || 'member'; state.entries = d.entries || []; state.homework = d.homework || []; state.members = d.members || []; state.notifications = d.notifications || [];
+    const newlyEarned = d.new_medals || [];
     if (state.group?.id) localStorage.setItem(GROUP_KEY, state.group.id); else localStorage.removeItem(GROUP_KEY);
     if (!state.profileUserId && state.user) state.profileUserId = state.user.id;
     render();
+    if (newlyEarned.length) setTimeout(()=>medalEarnedModal(newlyEarned), 80);
   } catch (e) { toast(e.message); render(); }
 }
 function clearSession() { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); localStorage.removeItem(GROUP_KEY); state.user = null; state.group = null; state.groups = []; state.entries = []; state.homework = []; state.members = []; state.notifications = []; state.profileUserId = null; }
@@ -60,15 +82,27 @@ function view() { if (state.tab === 'feed') return feed(); if (state.tab === 'jo
 function feed() { return `<div class="grid"><div class="feed">${state.entries.length ? state.entries.map(entryCard).join('') : '<div class="emptyCard">No practice entries yet. Be first 👀</div>'}</div><aside class="rightcol">${homeworkPanel()}${leader()}</aside></div>`; }
 function profileAvatar(url, name, large = false) { return url ? `<div class="avatar ${large?'large':''} photo"><img src="${esc(url)}" alt="${esc(name)}"></div>` : `<div class="avatar ${large?'large':''}">${esc((name || 'M')[0])}</div>`; }
 function roleBadge(role){ if(role==='admin') return '<span class="adminCrown" title="Admin">👑</span>'; if(role==='teacher') return '<span class="teacherBadge" title="Teacher">📚</span>'; return ''; }
-function memberName(name, role){ return `${esc(name)} ${roleBadge(role)}`; }
+function traineeBadges(perks={}){ const b=perks.rank_badges||[]; return `${b.includes('diamond')?'<span class="rankDiamond" title="Devoted Trainee">💎</span>':''}${b.includes('star')?'<span class="rankStar" title="Ace Trainee">⭐</span>':''}`; }
+function memberName(name, role, person={}){ const ck=NAME_COLORS[person.name_color] ? person.name_color : 'default', fk=NAME_FONTS[person.name_font] ? person.name_font : 'default'; return `<span class="styledName" style="color:${NAME_COLORS[ck]};font-family:${NAME_FONTS[fk]}">${esc(name)}</span> ${roleBadge(role)} ${traineeBadges(person.perks||{})}`; }
 function canSetHomework(){ return state.role==='admin' || state.role==='teacher'; }
+function reactionEmoji(){ return state.user?.perks?.super_fire ? '❤️‍🔥' : '🔥'; }
+function medalIcon(m){ if((m.medal_key||'').startsWith('weekly:')) return '🏆'; return MEDAL_TIER_ICONS[m.tier] || '🏅'; }
+function medalDescription(m){
+  if((m.medal_key||'').startsWith('weekly:')) return `Most practice time in ${esc(m.meta?.group_name||'the group')} · week of ${esc(m.meta?.week_start||'')}`;
+  if(m.category) return `${esc(CATS[m.category]?.[0]||m.category)} · ${fmtMin(Number(m.meta?.minutes||0))} cumulative`;
+  const mins=Number(m.meta?.minutes||0); return mins ? `${fmtMin(mins)} total practice` : '';
+}
+function themeUnlockForMedal(m){
+  const map={passionate:'blue_pulse',avid:'neon_stage',zealous:'midnight_chrome',fanatical:'aurora',infatuated:'prism',maniacal:'redline',novice:'trainee_grid',superstar:'superstar_gold'};
+  return map[m.tier] ? THEME_LABELS[map[m.tier]] : '';
+}
 
 function entryCard(e) {
   const own = !!state.user && e.user_id === state.user.id;
   const canDelete = own || state.role === 'admin';
   const comments = e.comment_items || [];
   const media = e.media || [];
-  return `<article class="entryCard" data-entry="${e.id}"><div class="entryHead">${profileAvatar(e.avatar_url,e.display_name)}<button class="profileLink" data-profile="${e.user_id}"><strong>${memberName(e.display_name,(state.members.find(m=>m.user_id===e.user_id)||{}).role)}</strong><span>${new Date(e.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></button><div class="entryActions"><div class="duration">◷ ${fmtMin(e.duration_minutes)}</div>${(own || state.role==='admin') ? `<button class="deleteEntry" data-id="${e.id}" title="${own?'Delete your entry':'Admin: delete entry'}">×</button>` : ''}</div></div><div class="flairs">${(e.categories || []).map(c => `<span class="flair ${CATS[c]?.[1] || ''}">${esc(CATS[c]?.[0] || c)}</span>`).join('')}</div><p class="desc">${esc(e.description)}</p>${mediaGallery(media)}<div class="split"><div><small>IMPROVEMENTS</small><p>${esc(e.improvements || '—')}</p></div><div><small>CHALLENGES</small><p>${esc(e.challenges || '—')}</p></div></div><div class="entryFoot"><span class="${e.homework_completed ? 'done' : 'pending'}">✓ Homework ${e.homework_completed ? 'completed' : 'pending'}</span><div class="social"><button class="react socialAction" data-id="${e.id}"><span>🔥</span><b>${e.reactions || 0}</b><em>React</em></button><button class="comment socialAction" data-id="${e.id}"><span>💬</span><b>${e.comments || 0}</b><em>Comment</em></button></div></div>${comments.length ? `<div class="commentsPreview">${comments.slice(0,3).map(commentRow).join('')}${comments.length > 3 ? `<button class="comment moreComments" data-id="${e.id}">View all ${comments.length} comments</button>` : ''}</div>` : ''}</article>`;
+  return `<article class="entryCard" data-entry="${e.id}"><div class="entryHead">${profileAvatar(e.avatar_url,e.display_name)}<button class="profileLink" data-profile="${e.user_id}"><strong>${(()=>{const a=state.members.find(m=>m.user_id===e.user_id)||(e.user_id===state.user?.id?state.user:{});return memberName(e.display_name,a.role||'',a)})()}</strong><span>${new Date(e.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></button><div class="entryActions"><div class="duration">◷ ${fmtMin(e.duration_minutes)}</div>${(own || state.role==='admin') ? `<button class="deleteEntry" data-id="${e.id}" title="${own?'Delete your entry':'Admin: delete entry'}">×</button>` : ''}</div></div><div class="flairs">${(e.categories || []).map(c => `<span class="flair ${CATS[c]?.[1] || ''}">${esc(CATS[c]?.[0] || c)}</span>`).join('')}</div><p class="desc">${esc(e.description)}</p>${mediaGallery(media)}<div class="split"><div><small>IMPROVEMENTS</small><p>${esc(e.improvements || '—')}</p></div><div><small>CHALLENGES</small><p>${esc(e.challenges || '—')}</p></div></div><div class="entryFoot"><span class="${e.homework_completed ? 'done' : 'pending'}">✓ Homework ${e.homework_completed ? 'completed' : 'pending'}</span><div class="social"><button class="react socialAction ${state.user?.perks?.super_fire?'superFire':''}" data-id="${e.id}" title="${state.user?.perks?.super_fire?'Super Fire unlocked by Superstar':'React'}"><span>${reactionEmoji()}</span><b>${e.reactions || 0}</b><em>${state.user?.perks?.super_fire?'Super Fire':'React'}</em></button><button class="comment socialAction" data-id="${e.id}"><span>💬</span><b>${e.comments || 0}</b><em>Comment</em></button></div></div>${comments.length ? `<div class="commentsPreview">${comments.slice(0,3).map(commentRow).join('')}${comments.length > 3 ? `<button class="comment moreComments" data-id="${e.id}">View all ${comments.length} comments</button>` : ''}</div>` : ''}</article>`;
 }
 function mediaGallery(media) {
   if (!media?.length) return '';
@@ -93,10 +127,17 @@ function notificationsView(){
 }
 function metric(l,v) { return `<div class="metric"><span>${l}</span><strong>${v}</strong></div>`; }
 function streak(entries) { const days = new Set(entries.map(e => new Date(e.created_at).toDateString())); let n = 0, d = new Date(); while (days.has(d.toDateString())) { n++; d.setDate(d.getDate()-1); } return n; }
-function stats() { const mine = state.entries.filter(e=>e.user_id===state.user?.id), mins = mine.reduce((a,b)=>a+b.duration_minutes,0), done = state.homework.filter(h=>h.completed).length, comp = state.homework.length?Math.round(done/state.homework.length*100):0; const recent=[...mine].slice(0,12).reverse(), max=Math.max(1,...recent.map(e=>e.duration_minutes)); return `<div class="single"><div class="metricRow">${metric('Total practice',(mins/60).toFixed(1)+'h')}${metric('Homework',comp+'%')}${metric('Practice streak',streak(mine)+' days')}</div><section class="chartCard"><p class="eyebrow">PRACTICE TIME</p><h2>Recent sessions</h2><div class="bars">${recent.map((e,i)=>`<div><span style="height:${Math.max(8,e.duration_minutes/max*100)}%"></span><small>${i+1}</small></div>`).join('')}</div></section><section class="chartCard"><p class="eyebrow">CATEGORY FOCUS</p><div class="categoryStats">${Object.entries(CATS).map(([k,v])=>{const n=mine.filter(e=>(e.categories||[]).includes(k)).length; return `<div><span>${v[0]}</span><div><i style="width:${mine.length?Math.round(n/mine.length*100):0}%"></i></div><b>${n}</b></div>`;}).join('')}</div></section></div>`; }
-function membersView() {
-  return `<div class="membersHeader"><div><h2>${esc(state.group?.name||'Group')}</h2><p class="muted">Invite code: <b>${esc(state.group?.invite_code||'')}</b></p></div><div class="memberHeaderActions"><button id="copyCode" class="secondary">Copy invite</button><button id="joinAnother" class="secondary">Join another</button><button id="createAnother" class="primary">Create group</button></div></div>
-  <div class="memberGrid">${state.members.map(m=>`<div class="memberCard">${profileAvatar(m.avatar_url,m.display_name,true)}<h3>${memberName(m.display_name,m.role)}</h3><p>@${esc(m.username)} · <span class="roleText">${esc(m.role)}</span></p><div class="memberActions"><button class="viewProfile" data-profile="${m.user_id}">View profile</button>${state.role==='admin' && m.user_id!==state.user?.id ? `<button class="memberManage" data-user="${m.user_id}" data-name="${esc(m.display_name)}" data-role="${m.role}">Manage member</button>` : ''}</div></div>`).join('')}</div>`;
+function lineChart(entries){
+  const recent=[...entries].slice(0,14).reverse();
+  if(!recent.length) return '<div class="lineEmpty">No practice data yet.</div>';
+  const W=700,H=210,padX=30,padY=24,max=Math.max(60,...recent.map(e=>Number(e.duration_minutes)||0));
+  const pts=recent.map((e,i)=>{const x=recent.length===1?W/2:padX+i*(W-padX*2)/(recent.length-1),y=H-padY-(Number(e.duration_minutes)||0)/(max)*(H-padY*2);return {x,y,e};});
+  const poly=pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  return `<div class="lineChartWrap"><svg class="lineChart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Practice time line graph"><line x1="${padX}" y1="${H-padY}" x2="${W-padX}" y2="${H-padY}" class="axisLine"/><line x1="${padX}" y1="${padY}" x2="${padX}" y2="${H-padY}" class="axisLine"/><polyline points="${poly}" class="practiceLine"/>${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="5" class="practicePoint"><title>${new Date(p.e.created_at).toLocaleDateString()}: ${fmtMin(p.e.duration_minutes)}</title></circle>`).join('')}</svg><div class="lineLabels">${recent.map(e=>`<span>${new Date(e.created_at).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</span>`).join('')}</div></div>`;
+}
+function stats() {
+  const mine=state.entries.filter(e=>e.user_id===state.user?.id), mins=mine.reduce((a,b)=>a+b.duration_minutes,0), done=state.homework.filter(h=>h.completed).length, comp=state.homework.length?Math.round(done/state.homework.length*100):0;
+  return `<div class="single"><div class="metricRow">${metric('Total practice',(mins/60).toFixed(1)+'h')}${metric('Homework',comp+'%')}${metric('Practice streak',streak(mine)+' days')}</div><section class="chartCard"><p class="eyebrow">PRACTICE TIME</p><h2>Recent sessions</h2>${lineChart(mine)}</section><section class="chartCard"><p class="eyebrow">CATEGORY FOCUS</p><div class="categoryStats">${Object.entries(CATS).map(([k,v])=>{const n=mine.filter(e=>(e.categories||[]).includes(k)).length; return `<div><span>${v[0]}</span><div><i style="width:${mine.length?Math.round(n/mine.length*100):0}%"></i></div><b>${n}</b></div>`;}).join('')}</div></section></div>`;
 }
 function memberById(id) { if (id === state.user?.id) return {...state.user, user_id: state.user.id, role: state.role}; return state.members.find(m => m.user_id === id) || null; }
 function profileView() {
@@ -104,7 +145,17 @@ function profileView() {
   const p = memberById(id);
   if (!p) return `<div class="emptyCard">Profile not found.</div>`;
   const entries = state.entries.filter(e=>e.user_id===id), mins=entries.reduce((a,b)=>a+b.duration_minutes,0), recent=[...entries].slice(0,10).reverse(), max=Math.max(1,...recent.map(e=>e.duration_minutes)), own=id===state.user?.id;
-  return `<div class="single profilePage"><section class="profileHero">${profileAvatar(p.avatar_url,p.display_name,true)}<div class="profileIdentity"><p class="eyebrow">${esc((p.role||'member').toUpperCase())}</p><h2>${memberName(p.display_name,p.role)}</h2><span>@${esc(p.username)}</span><p class="bio">${esc(p.bio || (own ? 'Add a bio to your O2 profile.' : 'No bio yet.'))}</p></div>${own?`<button id="editProfile" class="secondary">Edit profile</button>`:''}</section><div class="metricRow">${metric('Practice time',(mins/60).toFixed(1)+'h')}${metric('Entries',entries.length)}${metric('Streak',streak(entries)+' days')}</div><section class="chartCard"><p class="eyebrow">PRACTICE HISTORY</p><h2>Recent sessions</h2><div class="bars profileBars">${recent.map((e,i)=>`<div><span style="height:${Math.max(8,e.duration_minutes/max*100)}%"></span><small>${new Date(e.created_at).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</small></div>`).join('')}</div></section><div class="feed">${entries.map(entryCard).join('') || '<div class="emptyCard">No practice entries yet.</div>'}</div></div>`;
+  const medals=p.medals||[], theme=THEME_LABELS[p.profile_theme]?p.profile_theme:'default';
+  return `<div class="single profilePage"><section class="profileHero theme-${theme}">${profileAvatar(p.avatar_url,p.display_name,true)}<div class="profileIdentity"><p class="eyebrow">${esc((p.role||'member').toUpperCase())}</p><h2>${memberName(p.display_name,p.role,p)}</h2><span>@${esc(p.username)}</span><p class="bio">${esc(p.bio || (own ? 'Add a bio to your O2 profile.' : 'No bio yet.'))}</p></div>${own?`<button id="editProfile" class="secondary">Edit profile</button>`:''}</section><div class="metricRow">${metric('Practice time',fmtMin(Number(p.perks?.total_minutes||mins)))}${metric('Entries',entries.length)}${metric('Medals',medals.length)}</div><section class="medalSection"><div class="sectionHead"><div><p class="eyebrow">MEDALS</p><h2>Achievements & perks</h2></div></div>${medals.length?`<div class="medalGrid">${medals.map(medalCard).join('')}</div>`:'<div class="emptyCard">No medals yet. Your first unlock is Novice Trainee after more than 5 hours of practice.</div>'}</section><section class="chartCard"><p class="eyebrow">PRACTICE HISTORY</p><h2>Recent sessions</h2><div class="bars profileBars">${recent.map((e,i)=>`<div><span style="height:${Math.max(8,e.duration_minutes/max*100)}%"></span><small>${new Date(e.created_at).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</small></div>`).join('')}</div></section><div class="feed">${entries.map(entryCard).join('') || '<div class="emptyCard">No practice entries yet.</div>'}</div></div>`;
+}
+function medalCard(m){
+  const unlock=themeUnlockForMedal(m);
+  return `<article class="medalCard tier-${esc(m.tier||'')}"><div class="medalIcon">${medalIcon(m)}</div><div><h3>${esc(m.medal_name||'Medal')}</h3><p>${medalDescription(m)}</p>${unlock?`<small>Unlocks ${esc(unlock)} profile theme</small>`:''}</div></article>`;
+}
+function medalEarnedModal(medals){
+  const shown=medals.slice(0,8);
+  modal(`<button class="close">×</button><div class="medalEarned"><div class="medalBurst">🏅</div><p class="eyebrow">MEDAL EARNED</p><h2>${medals.length===1?'New achievement unlocked!':`${medals.length} achievements unlocked!`}</h2><div class="earnedList">${shown.map(m=>`<div>${medalIcon(m)} <span><b>${esc(m.medal_name)}</b><small>${medalDescription(m)}</small></span></div>`).join('')}${medals.length>shown.length?`<p class="muted">+ ${medals.length-shown.length} more — view your profile for all medals.</p>`:''}</div><button id="medalProfile" class="primary wide">View medals</button></div>`);
+  $('#medalProfile').onclick=()=>{state.profileUserId=state.user?.id;state.tab='profile';$('#modal').innerHTML='';render();};
 }
 function bind() {
   $$('.nav').forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab; if(state.tab==='profile')state.profileUserId=state.user?.id; render();});
@@ -164,7 +215,7 @@ function homeworkModal() { modal(`<button class="close">×</button><p class="eye
 async function toggleHW(id,done){try{await rpc('o2_set_homework',{p_token:getToken(),p_homework_id:id,p_completed:done});await refresh();}catch(e){toast(e.message);}}
 async function deleteHomework(id){if(!confirm('Delete this homework for everyone?'))return;try{await rpc('o2_delete_homework',{p_token:getToken(),p_homework_id:id});toast('Homework deleted');await refresh();}catch(e){toast(e.message);}}
 async function setMemberRole(userId,role){const label=role==='admin'?'make this member an admin':'remove admin access';if(!confirm(`Are you sure you want to ${label}?`))return;try{await rpc('o2_set_member_role',{p_token:getToken(),p_group_id:state.group.id,p_user_id:userId,p_role:role});toast(role==='admin'?'Admin added':'Admin access removed');await refresh();}catch(e){toast(e.message);}}
-async function react(id){try{await rpc('o2_toggle_reaction',{p_token:getToken(),p_entry_id:id,p_emoji:'🔥'});await refresh();}catch(e){toast(e.message);}}
+async function react(id){try{await rpc('o2_toggle_reaction',{p_token:getToken(),p_entry_id:id,p_emoji:reactionEmoji()});await refresh();}catch(e){toast(e.message);}}
 function commentModal(id) {
   const entry=state.entries.find(e=>e.id===id), comments=entry?.comment_items||[];
   modal(`<button class="close">×</button><p class="eyebrow">COMMENTS</p><h2>${comments.length} comment${comments.length===1?'':'s'}</h2><div class="commentsModal">${comments.map(commentRow).join('')||'<p class="muted">No comments yet.</p>'}</div><label>Add a comment<textarea id="commentBody" placeholder="Write something supportive…"></textarea></label><button id="commentGo" class="primary wide">Post comment</button>`);
@@ -190,8 +241,12 @@ async function uploadProfilePhoto(file) {
   return sb.storage.from(EVIDENCE_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 function editProfileModal() {
-  modal(`<button class="close">×</button><p class="eyebrow">PROFILE</p><h2>Edit profile</h2><label>Display name<input id="pname" maxlength="50" value="${esc(state.user.display_name||'')}"></label><label>Bio<textarea id="pbio" maxlength="300" placeholder="Dance style, goals, role in the group…">${esc(state.user.bio||'')}</textarea></label><label>Profile picture<input id="pavatar" class="fileInput" type="file" accept="image/*"></label><button id="profileSave" class="primary wide">Save profile</button>`);
-  $('#profileSave').onclick=async()=>{const btn=$('#profileSave');try{btn.disabled=true;btn.textContent='Saving…';const avatar=await uploadProfilePhoto($('#pavatar').files[0]);await rpc('o2_update_profile',{p_token:getToken(),p_display_name:$('#pname').value,p_bio:$('#pbio').value,p_avatar_url:avatar});$('#modal').innerHTML='';toast('Profile updated');await refresh();}catch(e){toast(e.message);btn.disabled=false;btn.textContent='Save profile';}};
+  const p=memberById(state.user?.id)||state.user, perks=p?.perks||{}, unlocked=perks.unlocked_themes||['default'];
+  const colorOptions=(perks.allow_name_color?Object.keys(NAME_COLORS):['default']).map(k=>`<option value="${k}" ${p.name_color===k?'selected':''}>${NAME_COLOR_LABELS[k]}</option>`).join('');
+  const fontOptions=(perks.allow_name_font?Object.keys(NAME_FONTS):['default']).map(k=>`<option value="${k}" ${p.name_font===k?'selected':''}>${NAME_FONT_LABELS[k]}</option>`).join('');
+  const themeOptions=unlocked.map(k=>`<option value="${k}" ${p.profile_theme===k?'selected':''}>${THEME_LABELS[k]||k}</option>`).join('');
+  modal(`<button class="close">×</button><p class="eyebrow">PROFILE</p><h2>Edit profile</h2><label>Display name<input id="pname" maxlength="50" value="${esc(state.user.display_name||'')}"></label><label>Bio<textarea id="pbio" maxlength="300" placeholder="Dance style, goals, role in the group…">${esc(state.user.bio||'')}</textarea></label><label>Profile picture<input id="pavatar" class="fileInput" type="file" accept="image/*"></label><div class="profilePerkFields"><label>Name colour ${perks.allow_name_color?'':'<span class="locked">🔒 Novice Trainee</span>'}<select id="pcolor">${colorOptions}</select></label><label>Name font ${perks.allow_name_font?'':'<span class="locked">🔒 Debut Lineup</span>'}<select id="pfont">${fontOptions}</select></label><label>Profile decoration theme<select id="ptheme">${themeOptions}</select></label></div><button id="profileSave" class="primary wide">Save profile</button>`);
+  $('#profileSave').onclick=async()=>{const btn=$('#profileSave');try{btn.disabled=true;btn.textContent='Saving…';const avatar=await uploadProfilePhoto($('#pavatar').files[0]);await rpc('o2_update_profile_v8',{p_token:getToken(),p_display_name:$('#pname').value,p_bio:$('#pbio').value,p_avatar_url:avatar,p_name_color:$('#pcolor').value,p_name_font:$('#pfont').value,p_profile_theme:$('#ptheme').value});$('#modal').innerHTML='';toast('Profile updated');await refresh();}catch(e){toast(e.message);btn.disabled=false;btn.textContent='Save profile';}};
 }
 
 function groupSwitchModal() {
