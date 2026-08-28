@@ -27,10 +27,24 @@ const NAME_FONTS = {
   elegant:'Didot, Bodoni 72, Georgia, serif'
 };
 const NAME_FONT_LABELS = {default:'Default',serif:'Classic Serif',mono:'Studio Mono',rounded:'Bubble Rounded',condensed:'Stage Condensed',elegant:'Editorial'};
-const THEME_LABELS = {
-  default:'Default', trainee_grid:'Trainee Grid', blue_pulse:'Blue Pulse', neon_stage:'Neon Stage',
-  midnight_chrome:'Midnight Chrome', aurora:'Aurora', prism:'Prism', redline:'Redline', superstar_gold:'Superstar Gold'
+const BASE_THEME_LABELS = {
+  default:'Default', trainee_grid:'Trainee Grid', superstar_gold:'Superstar Gold'
 };
+const CATEGORY_THEME_NAMES = {
+  choreography:'Memory Grid', cleaning:'Precision Lines', dynamics:'Dynamic Pulse', isolations:'Isolation Matrix',
+  expressions:'Expression Glow', stamina:'Stamina Circuit', foundation:'Foundation Frame', formation:'Formation Map',
+  extensions:'Extension Arc', stability:'Stability Core'
+};
+const TIER_THEME_SUFFIX = {
+  passionate:'I', avid:'II', zealous:'III', fanatical:'IV', infatuated:'V', maniacal:'VI'
+};
+function themeLabel(key){
+  if(BASE_THEME_LABELS[key]) return BASE_THEME_LABELS[key];
+  const m=/^cat_(.+)_(passionate|avid|zealous|fanatical|infatuated|maniacal)$/.exec(key||'');
+  if(!m) return key||'Default';
+  return `${CATEGORY_THEME_NAMES[m[1]]||m[1]} ${TIER_THEME_SUFFIX[m[2]]}`;
+}
+function categoryThemeKey(category,tier){ return `cat_${category}_${tier}`; }
 const MEDAL_TIER_ICONS = {
   weekly:'🏆', passionate:'💙', avid:'⚡', zealous:'🔥', fanatical:'💥', infatuated:'💎', maniacal:'🌀',
   novice:'🎓', devoted:'💎', ace:'⭐', debut:'🎤', superstar:'🌟'
@@ -74,11 +88,11 @@ function render() {
 }
 function groupSwitcher() { if (!state.groups?.length) return ''; const current=state.group?.name||'Choose group'; return `<div class="groupSwitchWrap"><label>GROUP</label><button id="groupSwitch" class="groupSwitchButton"><span>${esc(current)}</span><b>Switch</b></button></div>`; }
 function unreadCount(){ return (state.notifications||[]).filter(n=>!n.read_at).length; }
-function nav(k, i, t, badge=0) { return `<button class="nav ${state.tab === k ? 'active' : ''}" data-tab="${k}"><span class="navEmoji">${i}</span><label>${t}</label>${badge?`<b class="navBadge">${badge>99?'99+':badge}</b>`:''}</button>`; }
+function nav(k, i, t, badge=0) { return `<button type="button" class="nav ${state.tab === k ? 'active' : ''}" data-tab="${k}"><span class="navEmoji">${i}</span><label>${t}</label>${badge?`<b class="navBadge">${badge>99?'99+':badge}</b>`:''}</button>`; }
 function title() { return ({ feed:'Practice Feed', journal:'My Journal', homework:'Homework', stats:'Stats', members:'Members', notifications:'Notifications', profile:'Profile' })[state.tab]; }
 function welcome() { return `<section class="empty"><img src="assets/o2-logo.png"><h2>O2 Practice Journal</h2><p>Sign in with your O2 username. No email address is used.</p><button class="primary" id="signin2">Sign in / create account</button></section>`; }
 function groupSetup() { return `<section class="empty"><h2>Join your O2 group</h2><p>Create a group for your team or enter an invite code from another member.</p><div class="joinGrid"><button class="primary" id="createGroup">Create group</button><button class="secondary" id="joinGroup">Join with code</button></div></section>`; }
-function view() { if (state.tab === 'feed') return feed(); if (state.tab === 'journal') return journal(); if (state.tab === 'homework') return homeworkView(); if (state.tab === 'stats') return stats(); if (state.tab === 'notifications') return notificationsView(); if (state.tab === 'profile') return profileView(); return membersView(); }
+function view() { if (state.tab === 'feed') return feed(); if (state.tab === 'journal') return journal(); if (state.tab === 'homework') return homeworkView(); if (state.tab === 'stats') return stats(); if (state.tab === 'members') return membersView(); if (state.tab === 'notifications') return notificationsView(); if (state.tab === 'profile') return profileView(); return feed(); }
 function feed() { return `<div class="grid"><div class="feed">${state.entries.length ? state.entries.map(entryCard).join('') : '<div class="emptyCard">No practice entries yet. Be first 👀</div>'}</div><aside class="rightcol">${homeworkPanel()}${leader()}</aside></div>`; }
 function profileAvatar(url, name, large = false) { return url ? `<div class="avatar ${large?'large':''} photo"><img src="${esc(url)}" alt="${esc(name)}"></div>` : `<div class="avatar ${large?'large':''}">${esc((name || 'M')[0])}</div>`; }
 function roleBadge(role){ if(role==='admin') return '<span class="adminCrown" title="Admin">👑</span>'; if(role==='teacher') return '<span class="teacherBadge" title="Teacher">📚</span>'; return ''; }
@@ -87,14 +101,29 @@ function memberName(name, role, person={}){ const ck=NAME_COLORS[person.name_col
 function canSetHomework(){ return state.role==='admin' || state.role==='teacher'; }
 function reactionEmoji(){ return state.user?.perks?.super_fire ? '❤️‍🔥' : '🔥'; }
 function medalIcon(m){ if((m.medal_key||'').startsWith('weekly:')) return '🏆'; return MEDAL_TIER_ICONS[m.tier] || '🏅'; }
+function categoryThemeStyle(theme){
+  const m=/^cat_(.+)_(passionate|avid|zealous|fanatical|infatuated|maniacal)$/.exec(theme||'');
+  if(!m) return '';
+  const palettes={
+    choreography:['#0d2b5c','#1769ff'], cleaning:['#123a4a','#22b8cf'], dynamics:['#3b145a','#8b5cf6'],
+    isolations:['#4a1532','#e0528d'], expressions:['#5a1821','#ff5364'], stamina:['#57270b','#ff8a24'],
+    foundation:['#123c2b','#35b56f'], formation:['#0d3b42','#2fc4c8'], extensions:['#123f50','#1fb7d4'],
+    stability:['#26313f','#718096']
+  };
+  const level={passionate:1,avid:2,zealous:3,fanatical:4,infatuated:5,maniacal:6}[m[2]]||1;
+  const p=palettes[m[1]]||palettes.stability;
+  return `background:linear-gradient(135deg,${p[0]} 0%,#0b1017 58%,${p[0]} 100%)!important;border-color:${p[1]}!important;box-shadow:0 0 ${10+level*4}px ${p[1]}33;`;
+}
 function medalDescription(m){
   if((m.medal_key||'').startsWith('weekly:')) return `Most practice time in ${esc(m.meta?.group_name||'the group')} · week of ${esc(m.meta?.week_start||'')}`;
   if(m.category) return `${esc(CATS[m.category]?.[0]||m.category)} · ${fmtMin(Number(m.meta?.minutes||0))} cumulative`;
   const mins=Number(m.meta?.minutes||0); return mins ? `${fmtMin(mins)} total practice` : '';
 }
 function themeUnlockForMedal(m){
-  const map={passionate:'blue_pulse',avid:'neon_stage',zealous:'midnight_chrome',fanatical:'aurora',infatuated:'prism',maniacal:'redline',novice:'trainee_grid',superstar:'superstar_gold'};
-  return map[m.tier] ? THEME_LABELS[map[m.tier]] : '';
+  if(m.category && ['passionate','avid','zealous','fanatical','infatuated','maniacal'].includes(m.tier)) return themeLabel(categoryThemeKey(m.category,m.tier));
+  if(m.tier==='novice') return themeLabel('trainee_grid');
+  if(m.tier==='superstar') return themeLabel('superstar_gold');
+  return '';
 }
 
 function entryCard(e) {
@@ -145,8 +174,8 @@ function profileView() {
   const p = memberById(id);
   if (!p) return `<div class="emptyCard">Profile not found.</div>`;
   const entries = state.entries.filter(e=>e.user_id===id), mins=entries.reduce((a,b)=>a+b.duration_minutes,0), recent=[...entries].slice(0,10).reverse(), max=Math.max(1,...recent.map(e=>e.duration_minutes)), own=id===state.user?.id;
-  const medals=p.medals||[], theme=THEME_LABELS[p.profile_theme]?p.profile_theme:'default';
-  return `<div class="single profilePage"><section class="profileHero theme-${theme}">${profileAvatar(p.avatar_url,p.display_name,true)}<div class="profileIdentity"><p class="eyebrow">${esc((p.role||'member').toUpperCase())}</p><h2>${memberName(p.display_name,p.role,p)}</h2><span>@${esc(p.username)}</span><p class="bio">${esc(p.bio || (own ? 'Add a bio to your O2 profile.' : 'No bio yet.'))}</p></div>${own?`<button id="editProfile" class="secondary">Edit profile</button>`:''}</section><div class="metricRow">${metric('Practice time',fmtMin(Number(p.perks?.total_minutes||mins)))}${metric('Entries',entries.length)}${metric('Medals',medals.length)}</div><section class="medalSection"><div class="sectionHead"><div><p class="eyebrow">MEDALS</p><h2>Achievements & perks</h2></div></div>${medals.length?`<div class="medalGrid">${medals.map(medalCard).join('')}</div>`:'<div class="emptyCard">No medals yet. Your first unlock is Novice Trainee after more than 5 hours of practice.</div>'}</section><section class="chartCard"><p class="eyebrow">PRACTICE HISTORY</p><h2>Recent sessions</h2><div class="bars profileBars">${recent.map((e,i)=>`<div><span style="height:${Math.max(8,e.duration_minutes/max*100)}%"></span><small>${new Date(e.created_at).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</small></div>`).join('')}</div></section><div class="feed">${entries.map(entryCard).join('') || '<div class="emptyCard">No practice entries yet.</div>'}</div></div>`;
+  const medals=p.medals||[], theme=p.profile_theme||'default';
+  return `<div class="single profilePage"><section class="profileHero theme-${theme}" style="${categoryThemeStyle(theme)}">${profileAvatar(p.avatar_url,p.display_name,true)}<div class="profileIdentity"><p class="eyebrow">${esc((p.role||'member').toUpperCase())}</p><h2>${memberName(p.display_name,p.role,p)}</h2><span>@${esc(p.username)}</span><p class="bio">${esc(p.bio || (own ? 'Add a bio to your O2 profile.' : 'No bio yet.'))}</p></div>${own?`<button id="editProfile" class="secondary">Edit profile</button>`:''}</section><div class="metricRow">${metric('Practice time',fmtMin(Number(p.perks?.total_minutes||mins)))}${metric('Entries',entries.length)}${metric('Medals',medals.length)}</div><section class="medalSection"><div class="sectionHead"><div><p class="eyebrow">MEDALS</p><h2>Achievements & perks</h2></div></div>${medals.length?`<div class="medalGrid">${medals.map(medalCard).join('')}</div>`:'<div class="emptyCard">No medals yet. Your first unlock is Novice Trainee at 5 hours of practice.</div>'}</section><section class="chartCard"><p class="eyebrow">PRACTICE HISTORY</p><h2>Recent sessions</h2><div class="bars profileBars">${recent.map((e,i)=>`<div><span style="height:${Math.max(8,e.duration_minutes/max*100)}%"></span><small>${new Date(e.created_at).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</small></div>`).join('')}</div></section><div class="feed">${entries.map(entryCard).join('') || '<div class="emptyCard">No practice entries yet.</div>'}</div></div>`;
 }
 function medalCard(m){
   const unlock=themeUnlockForMedal(m);
@@ -244,7 +273,7 @@ function editProfileModal() {
   const p=memberById(state.user?.id)||state.user, perks=p?.perks||{}, unlocked=perks.unlocked_themes||['default'];
   const colorOptions=(perks.allow_name_color?Object.keys(NAME_COLORS):['default']).map(k=>`<option value="${k}" ${p.name_color===k?'selected':''}>${NAME_COLOR_LABELS[k]}</option>`).join('');
   const fontOptions=(perks.allow_name_font?Object.keys(NAME_FONTS):['default']).map(k=>`<option value="${k}" ${p.name_font===k?'selected':''}>${NAME_FONT_LABELS[k]}</option>`).join('');
-  const themeOptions=unlocked.map(k=>`<option value="${k}" ${p.profile_theme===k?'selected':''}>${THEME_LABELS[k]||k}</option>`).join('');
+  const themeOptions=unlocked.map(k=>`<option value="${k}" ${p.profile_theme===k?'selected':''}>${themeLabel(k)}</option>`).join('');
   modal(`<button class="close">×</button><p class="eyebrow">PROFILE</p><h2>Edit profile</h2><label>Display name<input id="pname" maxlength="50" value="${esc(state.user.display_name||'')}"></label><label>Bio<textarea id="pbio" maxlength="300" placeholder="Dance style, goals, role in the group…">${esc(state.user.bio||'')}</textarea></label><label>Profile picture<input id="pavatar" class="fileInput" type="file" accept="image/*"></label><div class="profilePerkFields"><label>Name colour ${perks.allow_name_color?'':'<span class="locked">🔒 Novice Trainee</span>'}<select id="pcolor">${colorOptions}</select></label><label>Name font ${perks.allow_name_font?'':'<span class="locked">🔒 Debut Lineup</span>'}<select id="pfont">${fontOptions}</select></label><label>Profile decoration theme<select id="ptheme">${themeOptions}</select></label></div><button id="profileSave" class="primary wide">Save profile</button>`);
   $('#profileSave').onclick=async()=>{const btn=$('#profileSave');try{btn.disabled=true;btn.textContent='Saving…';const avatar=await uploadProfilePhoto($('#pavatar').files[0]);await rpc('o2_update_profile_v8',{p_token:getToken(),p_display_name:$('#pname').value,p_bio:$('#pbio').value,p_avatar_url:avatar,p_name_color:$('#pcolor').value,p_name_font:$('#pfont').value,p_profile_theme:$('#ptheme').value});$('#modal').innerHTML='';toast('Profile updated');await refresh();}catch(e){toast(e.message);btn.disabled=false;btn.textContent='Save profile';}};
 }
