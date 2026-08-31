@@ -13,8 +13,8 @@ const $$ = (s, p = document) => [...p.querySelectorAll(s)];
 const CATS = {
   choreography: ['Choreo Memorisation', 'c1'], cleaning: ['Details / Cleaning', 'c2'], dynamics: ['Dynamics', 'c3'],
   isolations: ['Isolations', 'c4'], expressions: ['Facial Expressions', 'c5'], stamina: ['Stamina', 'c6'],
-  foundation: ['Foundation', 'c7'], formation: ['Formation Revision', 'c8'], extensions: ['Extensions', 'c9'],
-  stability: ['Stability', 'c10']
+  foundation: ['Foundation', 'c7'], formation: ['Formation Revision', 'c8'], extensions: ['Extensions / Lines', 'c9'],
+  stability: ['Stability', 'c10'], group_session: ['Group Session', 'c11'], timing: ['Timing', 'c12']
 };
 const NAME_COLORS = {
   default:'#ffffff', o2blue:'#4d88ff', sky:'#73c7ff', cyan:'#4fe4ef', mint:'#6be0b3',
@@ -33,7 +33,7 @@ const BASE_THEME_LABELS = {
 const CATEGORY_THEME_NAMES = {
   choreography:'Memory Grid', cleaning:'Precision Lines', dynamics:'Dynamic Pulse', isolations:'Isolation Matrix',
   expressions:'Expression Glow', stamina:'Stamina Circuit', foundation:'Foundation Frame', formation:'Formation Map',
-  extensions:'Extension Arc', stability:'Stability Core'
+  extensions:'Linework Arc', stability:'Stability Core', group_session:'Crew Sync', timing:'Beat Grid'
 };
 const TIER_THEME_SUFFIX = {
   passionate:'I', avid:'II', zealous:'III', fanatical:'IV', infatuated:'V', maniacal:'VI'
@@ -59,6 +59,23 @@ const demoEntries = [{
 }];
 const demoHW = [{ id: 'h1', title: 'Send practice video to teacher', due_date: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10), completed: false }];
 function esc(s = '') { return String(s).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])); }
+function richText(s){
+  let x=esc(s||'');
+  x=x.replace(/\*\*([^*\n][\s\S]*?)\*\*/g,'<strong>$1</strong>');
+  x=x.replace(/(^|[^\*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+  return x.replace(/\r?\n/g,'<br>');
+}
+function formatToolbar(targetId){
+  return `<div class="formatToolbar"><button type="button" class="fmtBtn" data-target="${targetId}" data-wrap="**"><b>B</b></button><button type="button" class="fmtBtn italicBtn" data-target="${targetId}" data-wrap="*"><i>I</i></button><span>Enter = new line</span></div>`;
+}
+function bindFormatButtons(root=document){
+  root.querySelectorAll('.fmtBtn').forEach(btn=>btn.onclick=()=>{
+    const ta=document.getElementById(btn.dataset.target); if(!ta)return;
+    const w=btn.dataset.wrap, a=ta.selectionStart, b=ta.selectionEnd, val=ta.value, selected=val.slice(a,b);
+    ta.value=val.slice(0,a)+w+selected+w+val.slice(b);
+    ta.focus(); ta.selectionStart=a+w.length; ta.selectionEnd=b+w.length;
+  });
+}
 function fmtMin(m) { return `${Math.floor(m / 60) ? Math.floor(m / 60) + 'h ' : ''}${m % 60 ? m % 60 + 'm' : ''}`.trim() || '0m'; }
 function toast(t) { const e = document.createElement('div'); e.className = 'toast'; e.textContent = t; document.body.append(e); setTimeout(() => e.remove(), 2800); }
 async function rpc(name, args = {}) { if (!sb) throw new Error('Supabase is not configured.'); const { data, error } = await sb.rpc(name, args); if (error) throw new Error(error.message.replace(/^.*?: /, '')); return data; }
@@ -68,7 +85,7 @@ async function refresh(groupId = localStorage.getItem(GROUP_KEY) || null) {
   if (!configured) { state.entries = demoEntries; state.homework = demoHW; state.members = []; state.groups = []; render(); return; }
   if (!getToken()) { state.user = null; state.group = null; state.groups = []; state.entries = []; state.homework = []; state.members = []; render(); return; }
   try {
-    const d = await rpc('o2_dashboard_v8', { p_token: getToken(), p_group_id: groupId || null });
+    const d = await rpc('o2_dashboard_201a', { p_token: getToken(), p_group_id: groupId || null });
     if (!d?.authenticated) { clearSession(); render(); return; }
     state.user = d.user; localStorage.setItem(USER_KEY, JSON.stringify(d.user));
     state.groups = d.groups || [];
@@ -78,6 +95,7 @@ async function refresh(groupId = localStorage.getItem(GROUP_KEY) || null) {
     if (!state.profileUserId && state.user) state.profileUserId = state.user.id;
     render();
     if (newlyEarned.length) setTimeout(()=>medalEarnedModal(newlyEarned), 80);
+    setTimeout(()=>maybeShowUpdate201A(), newlyEarned.length ? 500 : 100);
   } catch (e) { toast(e.message); render(); }
 }
 function clearSession() { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); localStorage.removeItem(GROUP_KEY); state.user = null; state.group = null; state.groups = []; state.entries = []; state.homework = []; state.members = []; state.notifications = []; state.profileUserId = null; }
@@ -108,7 +126,7 @@ function categoryThemeStyle(theme){
     choreography:['#0d2b5c','#1769ff'], cleaning:['#123a4a','#22b8cf'], dynamics:['#3b145a','#8b5cf6'],
     isolations:['#4a1532','#e0528d'], expressions:['#5a1821','#ff5364'], stamina:['#57270b','#ff8a24'],
     foundation:['#123c2b','#35b56f'], formation:['#0d3b42','#2fc4c8'], extensions:['#123f50','#1fb7d4'],
-    stability:['#26313f','#718096']
+    stability:['#26313f','#718096'], group_session:['#163640','#35d1c2'], timing:['#3d2a12','#f0b33e']
   };
   const level={passionate:1,avid:2,zealous:3,fanatical:4,infatuated:5,maniacal:6}[m[2]]||1;
   const p=palettes[m[1]]||palettes.stability;
@@ -131,13 +149,14 @@ function entryCard(e) {
   const canDelete = own || state.role === 'admin';
   const comments = e.comment_items || [];
   const media = e.media || [];
-  return `<article class="entryCard" data-entry="${e.id}"><div class="entryHead">${profileAvatar(e.avatar_url,e.display_name)}<button class="profileLink" data-profile="${e.user_id}"><strong>${(()=>{const a=state.members.find(m=>m.user_id===e.user_id)||(e.user_id===state.user?.id?state.user:{});return memberName(e.display_name,a.role||'',a)})()}</strong><span>${new Date(e.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></button><div class="entryActions"><div class="duration">◷ ${fmtMin(e.duration_minutes)}</div>${(own || state.role==='admin') ? `<button class="deleteEntry" data-id="${e.id}" title="${own?'Delete your entry':'Admin: delete entry'}">×</button>` : ''}</div></div><div class="flairs">${(e.categories || []).map(c => `<span class="flair ${CATS[c]?.[1] || ''}">${esc(CATS[c]?.[0] || c)}</span>`).join('')}</div><p class="desc">${esc(e.description)}</p>${mediaGallery(media)}<div class="split"><div><small>IMPROVEMENTS</small><p>${esc(e.improvements || '—')}</p></div><div><small>CHALLENGES</small><p>${esc(e.challenges || '—')}</p></div></div><div class="entryFoot"><span class="${e.homework_completed ? 'done' : 'pending'}">✓ Homework ${e.homework_completed ? 'completed' : 'pending'}</span><div class="social"><button class="react socialAction ${state.user?.perks?.super_fire?'superFire':''}" data-id="${e.id}" title="${state.user?.perks?.super_fire?'Super Fire unlocked by Superstar':'React'}"><span>${reactionEmoji()}</span><b>${e.reactions || 0}</b><em>${state.user?.perks?.super_fire?'Super Fire':'React'}</em></button><button class="comment socialAction" data-id="${e.id}"><span>💬</span><b>${e.comments || 0}</b><em>Comment</em></button></div></div>${comments.length ? `<div class="commentsPreview">${comments.slice(0,3).map(commentRow).join('')}${comments.length > 3 ? `<button class="comment moreComments" data-id="${e.id}">View all ${comments.length} comments</button>` : ''}</div>` : ''}</article>`;
+  const textOnly = e.entry_kind === 'text';
+  return `<article class="entryCard ${e.is_private?'privateEntry':''} ${textOnly?'textEntry':''}" data-entry="${e.id}"><div class="entryHead">${profileAvatar(e.avatar_url,e.display_name)}<button class="profileLink" data-profile="${e.user_id}"><strong>${(()=>{const a=state.members.find(m=>m.user_id===e.user_id)||(e.user_id===state.user?.id?state.user:{});return memberName(e.display_name,a.role||'',a)})()}</strong><span>${new Date(e.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})}${e.edited_at?' · edited':''}</span></button><div class="entryActions">${e.is_private?'<span class="privacyBadge">🔒 Private</span>':''}${textOnly?'<span class="textOnlyBadge">💬 Text</span>':`<div class="duration">◷ ${fmtMin(e.duration_minutes||0)}</div>`}${own?`<button class="editEntry" data-id="${e.id}" title="Edit your entry">✏️</button>`:''}${canDelete?`<button class="deleteEntry" data-id="${e.id}" title="${own?'Delete your entry':'Admin: delete entry'}">×</button>`:''}</div></div>${!textOnly&&e.categories?.length?`<div class="flairs">${(e.categories || []).map(c => `<span class="flair ${CATS[c]?.[1] || ''}">${esc(CATS[c]?.[0] || c)}</span>`).join('')}</div>`:''}<div class="desc richBody">${richText(e.description)}</div>${mediaGallery(media)}${!textOnly?`<div class="split"><div><small>IMPROVEMENTS</small><div class="richBody">${richText(e.improvements || '—')}</div></div><div><small>CHALLENGES</small><div class="richBody">${richText(e.challenges || '—')}</div></div></div>`:''}<div class="entryFoot">${!textOnly?`<span class="${e.homework_completed ? 'done' : 'pending'}">✓ Homework ${e.homework_completed ? 'completed' : 'pending'}</span>`:'<span></span>'}<div class="social"><button class="react socialAction ${state.user?.perks?.super_fire?'superFire':''}" data-id="${e.id}" title="${state.user?.perks?.super_fire?'Super Fire unlocked by Superstar':'React'}"><span>${reactionEmoji()}</span><b>${e.reactions || 0}</b><em>${state.user?.perks?.super_fire?'Super Fire':'React'}</em></button><button class="comment socialAction" data-id="${e.id}"><span>💬</span><b>${e.comments || 0}</b><em>Comment</em></button></div></div>${comments.length ? `<div class="commentsPreview">${comments.slice(0,3).map(commentRow).join('')}${comments.length > 3 ? `<button class="comment moreComments" data-id="${e.id}">View all ${comments.length} comments</button>` : ''}</div>` : ''}</article>`;
 }
 function mediaGallery(media) {
   if (!media?.length) return '';
   return `<div class="evidenceGrid">${media.map(m => m.media_type === 'video' ? `<button class="evidence videoEvidence" data-media="${esc(m.url)}"><video src="${esc(m.url)}" preload="metadata"></video><span>▶</span></button>` : `<button class="evidence imageEvidence" data-media="${esc(m.url)}"><img src="${esc(m.url)}" alt="Practice evidence"></button>`).join('')}</div>`;
 }
-function commentRow(c) { return `<div class="commentRow">${profileAvatar(c.avatar_url,c.display_name)}<div><b>${esc(c.display_name)}</b><p>${esc(c.body)}</p><small>${new Date(c.created_at).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</small></div></div>`; }
+function commentRow(c) { return `<div class="commentRow">${profileAvatar(c.avatar_url,c.display_name)}<div><b>${esc(c.display_name)}</b><p class="richBody">${richText(c.body)}</p><small>${new Date(c.created_at).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</small></div></div>`; }
 function homeworkPanel() { return `<section class="panel"><div class="panelTitle"><b>Homework</b>${canSetHomework() ? '<button id="addHomework">+ Add</button>' : ''}</div>${state.homework.length ? state.homework.slice(0,4).map(h => `<div class="hw"><input class="hwcheck" data-id="${h.id}" type="checkbox" ${h.completed ? 'checked' : ''}><span><strong>${esc(h.title)}</strong><small>Due ${new Date(h.due_date+'T00:00:00').toLocaleDateString()}</small></span><button class="deleteHomework miniDelete" data-id="${h.id}" title="Delete homework">×</button></div>`).join('') : '<p class="muted">Nothing due.</p>'}</section>`; }
 function leader() { const s = {}; state.entries.forEach(e => s[e.display_name] = (s[e.display_name] || 0) + e.duration_minutes); return `<section class="panel"><div class="panelTitle"><b>Practice ranking</b></div>${Object.entries(s).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,m],i)=>`<div class="rank"><span>${i+1}</span><b>${esc(n)}</b><em>${(m/60).toFixed(1)}h</em></div>`).join('') || '<p class="muted">No practice logged yet.</p>'}</section>`; }
 function journal() { const mine = state.entries.filter(e => e.user_id === state.user?.id); const mins = mine.reduce((a,b)=>a+b.duration_minutes,0); return `<div class="single"><div class="metricRow">${metric('Entries',mine.length)}${metric('Practice time',(mins/60).toFixed(1)+'h')}${metric('Current streak',streak(mine)+' days')}</div><div class="feed">${mine.map(entryCard).join('') || '<div class="emptyCard">Your journal is empty.</div>'}</div></div>`; }
@@ -155,9 +174,9 @@ function notificationsView(){
   return `<div class="single"><div class="sectionHead"><div><h2>Notifications</h2><p class="muted">${unreadCount()} unread</p></div>${unreadCount()?'<button id="markNotificationsRead" class="secondary">Mark all read</button>':''}</div><div class="notificationList">${items.length?items.map(n=>`<article class="notificationItem ${n.read_at?'':'unread'}"><span class="notificationIcon">${notificationIcon(n.kind)}</span><div><p>${notificationText(n)}</p><small>${esc(n.group_name||'')} · ${new Date(n.created_at).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</small></div>${n.read_at?'':'<i></i>'}</article>`).join(''):'<div class="emptyCard">No notifications yet.</div>'}</div></div>`;
 }
 function metric(l,v) { return `<div class="metric"><span>${l}</span><strong>${v}</strong></div>`; }
-function streak(entries) { const days = new Set(entries.map(e => new Date(e.created_at).toDateString())); let n = 0, d = new Date(); while (days.has(d.toDateString())) { n++; d.setDate(d.getDate()-1); } return n; }
+function streak(entries) { entries=entries.filter(e=>!e.is_private && e.entry_kind!=='text' && Number(e.duration_minutes)>0); const days = new Set(entries.map(e => new Date(e.created_at).toDateString())); let n = 0, d = new Date(); while (days.has(d.toDateString())) { n++; d.setDate(d.getDate()-1); } return n; }
 function lineChart(entries){
-  const recent=[...entries].slice(0,14).reverse();
+  const recent=[...entries].filter(e=>!e.is_private&&e.entry_kind!=='text'&&Number(e.duration_minutes)>0).slice(0,14).reverse();
   if(!recent.length) return '<div class="lineEmpty">No practice data yet.</div>';
   const W=700,H=210,padX=30,padY=24,max=Math.max(60,...recent.map(e=>Number(e.duration_minutes)||0));
   const pts=recent.map((e,i)=>{const x=recent.length===1?W/2:padX+i*(W-padX*2)/(recent.length-1),y=H-padY-(Number(e.duration_minutes)||0)/(max)*(H-padY*2);return {x,y,e};});
@@ -165,8 +184,8 @@ function lineChart(entries){
   return `<div class="lineChartWrap"><svg class="lineChart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Practice time line graph"><line x1="${padX}" y1="${H-padY}" x2="${W-padX}" y2="${H-padY}" class="axisLine"/><line x1="${padX}" y1="${padY}" x2="${padX}" y2="${H-padY}" class="axisLine"/><polyline points="${poly}" class="practiceLine"/>${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="5" class="practicePoint"><title>${new Date(p.e.created_at).toLocaleDateString()}: ${fmtMin(p.e.duration_minutes)}</title></circle>`).join('')}</svg><div class="lineLabels">${recent.map(e=>`<span>${new Date(e.created_at).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</span>`).join('')}</div></div>`;
 }
 function stats() {
-  const mine=state.entries.filter(e=>e.user_id===state.user?.id), mins=mine.reduce((a,b)=>a+b.duration_minutes,0), done=state.homework.filter(h=>h.completed).length, comp=state.homework.length?Math.round(done/state.homework.length*100):0;
-  return `<div class="single"><div class="metricRow">${metric('Total practice',(mins/60).toFixed(1)+'h')}${metric('Homework',comp+'%')}${metric('Practice streak',streak(mine)+' days')}</div><section class="chartCard"><p class="eyebrow">PRACTICE TIME</p><h2>Recent sessions</h2>${lineChart(mine)}</section><section class="chartCard"><p class="eyebrow">CATEGORY FOCUS</p><div class="categoryStats">${Object.entries(CATS).map(([k,v])=>{const n=mine.filter(e=>(e.categories||[]).includes(k)).length; return `<div><span>${v[0]}</span><div><i style="width:${mine.length?Math.round(n/mine.length*100):0}%"></i></div><b>${n}</b></div>`;}).join('')}</div></section></div>`;
+  const mine=state.entries.filter(e=>e.user_id===state.user?.id), counted=mine.filter(e=>!e.is_private&&e.entry_kind!=='text'&&Number(e.duration_minutes)>0), mins=counted.reduce((a,b)=>a+(Number(b.duration_minutes)||0),0), done=state.homework.filter(h=>h.completed).length, comp=state.homework.length?Math.round(done/state.homework.length*100):0;
+  return `<div class="single"><div class="metricRow">${metric('Total practice',(mins/60).toFixed(1)+'h')}${metric('Homework',comp+'%')}${metric('Practice streak',streak(mine)+' days')}</div><section class="chartCard"><p class="eyebrow">PRACTICE TIME</p><h2>Recent sessions</h2>${lineChart(counted)}</section><section class="chartCard"><p class="eyebrow">CATEGORY FOCUS</p><div class="categoryStats">${Object.entries(CATS).map(([k,v])=>{const n=counted.filter(e=>(e.categories||[]).includes(k)).length; return `<div><span>${v[0]}</span><div><i style="width:${counted.length?Math.round(n/counted.length*100):0}%"></i></div><b>${n}</b></div>`;}).join('')}</div></section></div>`;
 }
 function membersView() {
   return `<div class="membersHeader"><div><h2>${esc(state.group?.name||'Group')}</h2><p class="muted">Invite code: <b>${esc(state.group?.invite_code||'')}</b></p></div><div class="memberHeaderActions"><button id="copyCode" class="secondary">Copy invite</button><button id="joinAnother" class="secondary">Join another</button><button id="createAnother" class="primary">Create group</button></div></div>
@@ -177,7 +196,7 @@ function profileView() {
   const id = state.profileUserId || state.user?.id;
   const p = memberById(id);
   if (!p) return `<div class="emptyCard">Profile not found.</div>`;
-  const entries = state.entries.filter(e=>e.user_id===id), mins=entries.reduce((a,b)=>a+b.duration_minutes,0), recent=[...entries].slice(0,10).reverse(), max=Math.max(1,...recent.map(e=>e.duration_minutes)), own=id===state.user?.id;
+  const entries = state.entries.filter(e=>e.user_id===id), countedEntries=entries.filter(e=>!e.is_private&&e.entry_kind!=='text'&&Number(e.duration_minutes)>0), mins=countedEntries.reduce((a,b)=>a+(Number(b.duration_minutes)||0),0), recent=[...entries].slice(0,10).reverse(), max=Math.max(1,...recent.map(e=>e.duration_minutes)), own=id===state.user?.id;
   const medals=p.medals||[], theme=p.profile_theme||'default';
   return `<div class="single profilePage"><section class="profileHero theme-${theme}" style="${categoryThemeStyle(theme)}">${profileAvatar(p.avatar_url,p.display_name,true)}<div class="profileIdentity"><p class="eyebrow">${esc((p.role||'member').toUpperCase())}</p><h2>${memberName(p.display_name,p.role,p)}</h2><span>@${esc(p.username)}</span><p class="bio">${esc(p.bio || (own ? 'Add a bio to your O2 profile.' : 'No bio yet.'))}</p></div>${own?`<button id="editProfile" class="secondary">Edit profile</button>`:''}</section><div class="metricRow">${metric('Practice time',fmtMin(Number(p.perks?.total_minutes||mins)))}${metric('Entries',entries.length)}${metric('Medals',medals.length)}</div><section class="medalSection"><div class="sectionHead"><div><p class="eyebrow">MEDALS</p><h2>Achievements & perks</h2></div></div>${medals.length?`<div class="medalGrid">${medals.map(medalCard).join('')}</div>`:'<div class="emptyCard">No medals yet. Your first unlock is Novice Trainee at 5 hours of practice.</div>'}</section><section class="chartCard"><p class="eyebrow">PRACTICE HISTORY</p><h2>Recent sessions</h2><div class="bars profileBars">${recent.map((e,i)=>`<div><span style="height:${Math.max(8,e.duration_minutes/max*100)}%"></span><small>${new Date(e.created_at).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</small></div>`).join('')}</div></section><div class="feed">${entries.map(entryCard).join('') || '<div class="emptyCard">No practice entries yet.</div>'}</div></div>`;
 }
@@ -198,6 +217,7 @@ function bind() {
   $$('#addHomework').forEach(b=>b.addEventListener('click',homeworkModal)); $$('.hwcheck').forEach(x=>x.onchange=()=>toggleHW(x.dataset.id,x.checked)); $$('.deleteHomework').forEach(b=>b.onclick=()=>deleteHomework(b.dataset.id));
   $$('.react').forEach(b=>b.onclick=()=>react(b.dataset.id)); $$('.comment').forEach(b=>b.onclick=()=>commentModal(b.dataset.id));
   $$('.deleteEntry').forEach(b=>b.onclick=()=>deleteEntry(b.dataset.id));
+  $$('.editEntry').forEach(b=>b.onclick=()=>editEntryModal(b.dataset.id));
   $$('.deleteHomework').forEach(b=>b.onclick=()=>deleteHomework(b.dataset.id));
   $$('.viewProfile,.profileLink').forEach(b=>b.onclick=()=>{state.profileUserId=b.dataset.profile; state.tab='profile'; render();});
   $$('.evidence').forEach(b=>b.onclick=()=>mediaModal(b.dataset.media));
@@ -238,12 +258,29 @@ async function uploadEvidenceFiles(files, entryId) {
   return uploaded;
 }
 function entryModal() {
-  modal(`<button class="close">×</button><p class="eyebrow">NEW PRACTICE ENTRY</p><h2>Log today’s practice</h2><label>Practice duration <span id="durationValue" class="durationValue">1h</span><div class="durationSliderRow"><span>5m</span><input id="duration" type="range" min="5" max="360" step="5" value="60"><span>6h</span></div></label><label>What did you work on?</label><div class="selectFlairs">${Object.entries(CATS).map(([k,v])=>`<button class="flair ${v[1]}" data-cat="${k}">${v[0]}</button>`).join('')}</div><label>What did you actually work on?<textarea id="description" placeholder="Describe the session…"></textarea></label><div class="two"><label>Improvements<textarea id="improvements"></textarea></label><label>Challenges to overcome<textarea id="challenges"></textarea></label></div><label>Practice evidence <span class="fieldHint">Images/videos · up to 8 files · 50 MB each</span><input id="evidenceFiles" class="fileInput" type="file" accept="image/*,video/*" multiple></label><div id="filePreview" class="filePreview"></div><label class="check"><input id="hwdone" type="checkbox"> I completed this week’s homework</label><button id="publish" class="primary wide">Publish entry</button>`);
+  modal(`<button class="close">×</button><p class="eyebrow">NEW ENTRY</p><h2>Post to your journal</h2><div class="entryTypeSwitch"><button type="button" class="entryType active" data-kind="practice">💃 Practice</button><button type="button" class="entryType" data-kind="text">💬 Text only</button></div><div id="practiceFields"><label>Practice duration <span id="durationValue" class="durationValue">1h</span><div class="durationSliderRow"><span>5m</span><input id="duration" type="range" min="5" max="360" step="5" value="60"><span>6h</span></div></label><label>What did you work on?</label><div class="selectFlairs">${Object.entries(CATS).map(([k,v])=>`<button type="button" class="flair ${v[1]}" data-cat="${k}">${v[0]}</button>`).join('')}</div></div><label>Entry${formatToolbar('description')}<textarea id="description" placeholder="Write your entry…"></textarea></label><div id="practiceReflection" class="two"><label>Improvements${formatToolbar('improvements')}<textarea id="improvements"></textarea></label><label>Challenges to overcome${formatToolbar('challenges')}<textarea id="challenges"></textarea></label></div><label>Evidence / attachments <span class="fieldHint">Images/videos · up to 8 files · 50 MB each</span><input id="evidenceFiles" class="fileInput" type="file" accept="image/*,video/*" multiple></label><div id="filePreview" class="filePreview"></div><div id="practiceHomework"><label class="check"><input id="hwdone" type="checkbox"> I completed this week’s homework</label></div><label class="check privateCheck"><input id="privateEntry" type="checkbox"> 🔒 Private entry <span>Only you can see it; practice hours will not count.</span></label><button id="publish" class="primary wide">Publish entry</button>`);
+  bindFormatButtons($('#modal'));
+  let kind='practice', selected=[];
   const durationLabel=()=>{const m=+$('#duration').value; $('#durationValue').textContent=m<60?`${m}m`:(m%60?`${Math.floor(m/60)}h ${m%60}m`:`${m/60}h`);}; $('#duration').oninput=durationLabel; durationLabel();
-  let selected=[]; $$('.selectFlairs .flair').forEach(b=>b.onclick=()=>{const c=b.dataset.cat;b.classList.toggle('selected');selected=selected.includes(c)?selected.filter(x=>x!==c):[...selected,c];});
+  const syncKind=()=>{const practice=kind==='practice';$('#practiceFields').style.display=practice?'':'none';$('#practiceReflection').style.display=practice?'':'none';$('#practiceHomework').style.display=practice?'':'none';};
+  $$('.entryType').forEach(b=>b.onclick=()=>{kind=b.dataset.kind;$$('.entryType').forEach(x=>x.classList.toggle('active',x===b));syncKind();});
+  $$('.selectFlairs .flair').forEach(b=>b.onclick=()=>{const c=b.dataset.cat;b.classList.toggle('selected');selected=selected.includes(c)?selected.filter(x=>x!==c):[...selected,c];});
   $('#evidenceFiles').onchange=()=>{const files=[...$('#evidenceFiles').files];$('#filePreview').innerHTML=files.map(f=>`<span>${esc(f.name)} <small>${(f.size/1024/1024).toFixed(1)} MB</small></span>`).join('');};
-  $('#publish').onclick=async()=>{const btn=$('#publish'),files=[...$('#evidenceFiles').files];try{btn.disabled=true;btn.textContent='Publishing…';const eid=await rpc('o2_add_entry_v5',{p_token:getToken(),p_group_id:state.group.id,p_duration:+$('#duration').value||0,p_description:$('#description').value,p_improvements:$('#improvements').value,p_challenges:$('#challenges').value,p_categories:selected,p_homework_completed:$('#hwdone').checked});if(files.length){btn.textContent='Uploading evidence…';await uploadEvidenceFiles(files,eid);}$('#modal').innerHTML='';toast('Practice entry published');await refresh();}catch(e){toast(e.message);btn.disabled=false;btn.textContent='Publish entry';}};
+  $('#publish').onclick=async()=>{const btn=$('#publish'),files=[...$('#evidenceFiles').files];try{if(!$('#description').value.trim())throw new Error('Write something before publishing.');btn.disabled=true;btn.textContent='Publishing…';const eid=await rpc('o2_add_entry_201a',{p_token:getToken(),p_group_id:state.group.id,p_entry_kind:kind,p_duration:kind==='practice'?(+$('#duration').value||0):null,p_description:$('#description').value,p_improvements:kind==='practice'?$('#improvements').value:'',p_challenges:kind==='practice'?$('#challenges').value:'',p_categories:kind==='practice'?selected:[],p_homework_completed:kind==='practice'?$('#hwdone').checked:false,p_is_private:$('#privateEntry').checked});if(files.length){btn.textContent='Uploading evidence…';await uploadEvidenceFiles(files,eid);}$('#modal').innerHTML='';toast(kind==='practice'?'Practice entry published':'Text entry published');await refresh();}catch(err){toast(err.message);btn.disabled=false;btn.textContent='Publish entry';}};
 }
+function editEntryModal(id){
+  const e=state.entries.find(x=>x.id===id); if(!e||e.user_id!==state.user?.id){toast('You can only edit your own entries.');return;}
+  let currentKind=e.entry_kind||'practice', selected=[...(e.categories||[])];
+  modal(`<button class="close">×</button><p class="eyebrow">EDIT ENTRY</p><h2>Edit your post</h2><div class="entryTypeSwitch"><button type="button" class="entryType ${currentKind==='practice'?'active':''}" data-kind="practice">💃 Practice</button><button type="button" class="entryType ${currentKind==='text'?'active':''}" data-kind="text">💬 Text only</button></div><div id="practiceFields"><label>Practice duration <span id="durationValue" class="durationValue">${fmtMin(e.duration_minutes||60)}</span><div class="durationSliderRow"><span>5m</span><input id="duration" type="range" min="5" max="360" step="5" value="${e.duration_minutes||60}"><span>6h</span></div></label><label>What did you work on?</label><div class="selectFlairs">${Object.entries(CATS).map(([k,v])=>`<button type="button" class="flair ${v[1]} ${selected.includes(k)?'selected':''}" data-cat="${k}">${v[0]}</button>`).join('')}</div></div><label>Entry${formatToolbar('description')}<textarea id="description">${esc(e.description||'')}</textarea></label><div id="practiceReflection" class="two"><label>Improvements${formatToolbar('improvements')}<textarea id="improvements">${esc(e.improvements||'')}</textarea></label><label>Challenges${formatToolbar('challenges')}<textarea id="challenges">${esc(e.challenges||'')}</textarea></label></div><label>Add more evidence <span class="fieldHint">Existing evidence is kept</span><input id="evidenceFiles" class="fileInput" type="file" accept="image/*,video/*" multiple></label><div id="filePreview" class="filePreview"></div><div id="practiceHomework"><label class="check"><input id="hwdone" type="checkbox" ${e.homework_completed?'checked':''}> I completed this week’s homework</label></div><label class="check privateCheck"><input id="privateEntry" type="checkbox" ${e.is_private?'checked':''}> 🔒 Private entry <span>Only you can see it; practice hours will not count.</span></label><button id="saveEntry" class="primary wide">Save changes</button>`);
+  bindFormatButtons($('#modal'));
+  const syncKind=()=>{const practice=currentKind==='practice';$('#practiceFields').style.display=practice?'':'none';$('#practiceReflection').style.display=practice?'':'none';$('#practiceHomework').style.display=practice?'':'none';}; syncKind();
+  const durationLabel=()=>{const m=+$('#duration').value;$('#durationValue').textContent=m<60?`${m}m`:(m%60?`${Math.floor(m/60)}h ${m%60}m`:`${m/60}h`);};$('#duration').oninput=durationLabel;
+  $$('.entryType').forEach(b=>b.onclick=()=>{currentKind=b.dataset.kind;$$('.entryType').forEach(x=>x.classList.toggle('active',x===b));syncKind();});
+  $$('.selectFlairs .flair').forEach(b=>b.onclick=()=>{const c=b.dataset.cat;b.classList.toggle('selected');selected=selected.includes(c)?selected.filter(x=>x!==c):[...selected,c];});
+  $('#evidenceFiles').onchange=()=>{$('#filePreview').innerHTML=[...$('#evidenceFiles').files].map(f=>`<span>${esc(f.name)}</span>`).join('');};
+  $('#saveEntry').onclick=async()=>{const btn=$('#saveEntry'),files=[...$('#evidenceFiles').files];try{if(!$('#description').value.trim())throw new Error('Entry text cannot be empty.');btn.disabled=true;btn.textContent='Saving…';await rpc('o2_edit_entry_201a',{p_token:getToken(),p_entry_id:id,p_entry_kind:currentKind,p_duration:currentKind==='practice'?(+$('#duration').value||0):null,p_description:$('#description').value,p_improvements:currentKind==='practice'?$('#improvements').value:'',p_challenges:currentKind==='practice'?$('#challenges').value:'',p_categories:currentKind==='practice'?selected:[],p_homework_completed:currentKind==='practice'?$('#hwdone').checked:false,p_is_private:$('#privateEntry').checked});if(files.length){btn.textContent='Uploading evidence…';await uploadEvidenceFiles(files,id);}$('#modal').innerHTML='';toast('Entry updated');await refresh();}catch(err){toast(err.message);btn.disabled=false;btn.textContent='Save changes';}};
+}
+
 function homeworkModal() { modal(`<button class="close">×</button><p class="eyebrow">GROUP HOMEWORK</p><h2>Add homework</h2><label>Task<input id="htitle" placeholder="Send practice video to teacher"></label><label>Due date<input id="hdate" type="date"></label><button id="hadd" class="primary wide">Add for everyone</button>`); $('#hadd').onclick=async()=>{try{await rpc('o2_add_homework_v7',{p_token:getToken(),p_group_id:state.group.id,p_title:$('#htitle').value,p_due_date:$('#hdate').value||null});$('#modal').innerHTML='';toast('Homework added');await refresh();}catch(e){toast(e.message);}}; }
 async function toggleHW(id,done){try{await rpc('o2_set_homework',{p_token:getToken(),p_homework_id:id,p_completed:done});await refresh();}catch(e){toast(e.message);}}
 async function deleteHomework(id){if(!confirm('Delete this homework for everyone?'))return;try{await rpc('o2_delete_homework',{p_token:getToken(),p_homework_id:id});toast('Homework deleted');await refresh();}catch(e){toast(e.message);}}
@@ -309,6 +346,15 @@ async function setMemberRole(userId,role){
 }
 async function markNotificationsRead(){
   try{await rpc('o2_mark_notifications_read',{p_token:getToken()});await refresh();}catch(e){toast(e.message);}
+}
+
+function maybeShowUpdate201A(){
+  if(!state.user)return;
+  const key=`o2_update_2_01a_${state.user.id}`;
+  if(localStorage.getItem(key))return;
+  localStorage.setItem(key,'seen');
+  modal(`<button class="close">×</button><div class="updateChangelog"><span class="updateChip">UPDATE 2.01A</span><h2>Journal entries just got a major upgrade.</h2><div class="changeRows"><div>✍️ <span><b>Better writing</b><small>Line breaks display properly, with bold and italic formatting controls.</small></span></div><div>🔒 <span><b>Private entries</b><small>Private practice stays visible only to you and does not count toward medals or practice totals.</small></span></div><div>💬 <span><b>Text-only posts</b><small>Post thoughts or notes without logging practice duration.</small></span></div><div>✏️ <span><b>Edit your posts</b><small>Freely edit your own journal entries after publishing.</small></span></div><div>🏅 <span><b>Medals refreshed</b><small>More creative medal titles, stronger patterned profile themes, plus Group Session and Timing medals.</small></span></div><div>➰ <span><b>New practice categories</b><small>Group Session, Timing, and Extensions / Lines are now available.</small></span></div></div><button class="primary wide closeUpdate">Got it</button></div>`);
+  $('.closeUpdate').onclick=()=>$('#modal').innerHTML='';
 }
 
 boot();
